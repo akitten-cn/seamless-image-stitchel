@@ -1,5 +1,5 @@
 {
-  "name": "Seamless Image Stitcher",
-  "description": "A pure frontend application to vertically stitch multiple images into a single long screenshot while preserving original quality and EXIF data from the first image.",
+  "name": "无缝长图拼接工具",
+  "description": "一个纯前端应用，用于将多张图片垂直拼接成一张长截图，同时保持原始画质并保留第一张图片的EXIF信息。",
   "requestFramePermissions": []
 }

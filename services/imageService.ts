@@ -1,14 +1,14 @@
 import { UploadedImage, StitchResult } from '../types';
 
 /**
- * Loads a file into an HTMLImageElement to get dimensions and raw data.
+ * 将文件加载到 HTMLImageElement 以获取尺寸和原始数据。
  */
 const loadImage = (file: File): Promise<HTMLImageElement> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
-      // URL.revokeObjectURL(url); // Keep alive for drawing
+      // URL.revokeObjectURL(url); // 保持活跃以便绘制
       resolve(img);
     };
     img.onerror = reject;
@@ -17,7 +17,7 @@ const loadImage = (file: File): Promise<HTMLImageElement> => {
 };
 
 /**
- * Reads a file as a DataURL string (Base64).
+ * 将文件读取为 DataURL 字符串 (Base64)。
  */
 const readFileAsDataURL = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -29,24 +29,24 @@ const readFileAsDataURL = (file: File): Promise<string> => {
 };
 
 /**
- * Main function to stitch images vertically.
+ * 垂直拼接图片的主函数。
  */
 export const stitchImages = async (uploadedImages: UploadedImage[]): Promise<StitchResult> => {
   if (uploadedImages.length === 0) {
-    throw new Error("No images to stitch");
+    throw new Error("没有可拼接的图片");
   }
 
-  // 1. Load all images to valid HTMLImageElements
+  // 1. 加载所有图片为有效的 HTMLImageElements
   const loadedImages = await Promise.all(uploadedImages.map(u => loadImage(u.file)));
   
-  // 2. Calculate dimensions
-  // Strategy: Scale everything to the width of the FIRST image to maintain consistency.
-  // This is typical for "screenshot stitching".
+  // 2. 计算尺寸
+  // 策略：将所有内容缩放到第一张图片的宽度以保持一致性。
+  // 这对于“屏幕截图拼接”来说是很典型的做法。
   const targetWidth = loadedImages[0].naturalWidth;
   
   let totalHeight = 0;
   
-  // Calculate total height needed based on scaled dimensions
+  // 根据缩放后的尺寸计算所需的总高度
   const imageDrawData = loadedImages.map(img => {
     const scaleFactor = targetWidth / img.naturalWidth;
     const scaledHeight = img.naturalHeight * scaleFactor;
@@ -58,69 +58,68 @@ export const stitchImages = async (uploadedImages: UploadedImage[]): Promise<Sti
     };
   });
 
-  // 3. Create Canvas
+  // 3. 创建画布
   const canvas = document.createElement('canvas');
   canvas.width = targetWidth;
   canvas.height = totalHeight;
   const ctx = canvas.getContext('2d');
   
-  if (!ctx) throw new Error("Could not get canvas context");
+  if (!ctx) throw new Error("无法获取画布上下文");
 
-  // Fill white background (optional, prevents transparency issues)
+  // 填充白色背景（可选，防止透明度问题）
   ctx.fillStyle = "#FFFFFF";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // 4. Draw images
+  // 4. 绘制图片
   let currentY = 0;
   imageDrawData.forEach(({ img, scaledHeight }) => {
     ctx.drawImage(img, 0, currentY, targetWidth, scaledHeight);
     currentY += scaledHeight;
   });
 
-  // 5. Get Data URL (JPEG, Quality 1.0)
-  // We use JPEG because EXIF is typically supported in JPEG. 
-  // Piexifjs works with JPEG DataURLs.
+  // 5. 获取 Data URL (JPEG, 质量 1.0)
+  // 我们使用 JPEG 是因为 EXIF 通常在 JPEG 中受支持。
+  // Piexifjs 适用于 JPEG DataURLs。
   const stitchedDataUrl = canvas.toDataURL("image/jpeg", 1.0);
 
-  // 6. Handle EXIF
+  // 6. 处理 EXIF
   let finalDataUrl = stitchedDataUrl;
   
   try {
-    // Read the first image to get its EXIF
+    // 读取第一张图片以获取其 EXIF
     const firstImageDataUrl = await readFileAsDataURL(uploadedImages[0].file);
     
-    // Check if window.piexif exists (loaded via CDN in index.html)
+    // 检查 window.piexif 是否存在（通过 index.html 中的 CDN 加载）
     if (window.piexif) {
       try {
-        // Attempt to load EXIF from the first image
+        // 尝试从第一张图片加载 EXIF
         const exifObj = window.piexif.load(firstImageDataUrl);
         
-        // If EXIF exists, inject it into the new image
-        // '0th', 'Exif', 'GPS', 'Interop', '1st' are keys in exifObj
-        // We verify if it's not empty string which piexif returns for no exif
+        // 如果 EXIF 存在，将其注入到新图片中
+        // '0th', 'Exif', 'GPS', 'Interop', '1st' 是 exifObj 中的键
         if (typeof exifObj === 'object') {
-             // Sometimes load returns "null" string representation for empty
+             // 有时 load 对空内容返回 "null" 字符串表示
              const exifBytes = window.piexif.dump(exifObj);
              finalDataUrl = window.piexif.insert(exifBytes, stitchedDataUrl);
-             console.log("EXIF data successfully transferred.");
+             console.log("EXIF 数据已成功传输。");
         }
       } catch (exifError) {
-        console.warn("Could not extract or insert EXIF data (image might be PNG or have no EXIF):", exifError);
-        // Fallback: Just use the stitched image without EXIF
+        console.warn("无法提取或插入 EXIF 数据（图片可能是 PNG 或没有 EXIF）:", exifError);
+        // 降级处理：仅使用没有 EXIF 的拼接图片
       }
     } else {
-      console.warn("Piexifjs not found. EXIF data will not be preserved.");
+      console.warn("未找到 Piexifjs。将不会保留 EXIF 数据。");
     }
   } catch (err) {
-    console.error("Error handling EXIF:", err);
+    console.error("处理 EXIF 时出错:", err);
   }
 
-  // 7. Convert to Blob for download url
+  // 7. 转换为 Blob 用于下载链接
   const res = await fetch(finalDataUrl);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
 
-  // Cleanup
+  // 清理
   loadedImages.forEach(img => URL.revokeObjectURL(img.src));
 
   return {
